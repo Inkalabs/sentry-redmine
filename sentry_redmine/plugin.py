@@ -1,68 +1,88 @@
 from __future__ import absolute_import
 import json
 
-from django.utils.translation import ugettext_lazy as _
+import six
+from django.utils.safestring import mark_safe
+from django.core.urlresolvers import reverse
 
-from sentry.plugins.bases.issue import IssuePlugin
-from sentry.utils.http import absolute_uri
+from sentry.plugins.bases import notify
 
 from .client import RedmineClient
 from .forms import RedmineOptionsForm, RedmineNewIssueForm
+from .utils import render_html_body
 
 
-class RedminePlugin(IssuePlugin):
-    author = 'Sentry'
-    author_url = 'https://github.com/getsentry/sentry-redmine'
-    version = '0.1.0'
-    description = "Integrate Redmine issue tracking by linking a user account to a project."
-    resource_links = [
-        ('Bug Tracker', 'https://github.com/getsentry/sentry-redmine/issues'),
-        ('Source', 'https://github.com/getsentry/sentry-redmine'),
-    ]
-
-    slug = 'redmine'
-    title = _('Redmine')
-    conf_title = 'Redmine'
-    conf_key = 'redmine'
+class RedmineAutoTicketPlugin(notify.NotificationPlugin):
+    title = 'Redmine Auto Ticket'
+    slug = 'redmine_auto_ticket'
+    conf_tilte = 'Redmine Auto Ticket'
+    conf_key = 'redmine_auto_ticket'
     project_conf_form = RedmineOptionsForm
-    new_issue_form = RedmineNewIssueForm
 
     def is_configured(self, project, **kwargs):
         return all((self.get_option(k, project) for k in ('host', 'key', 'project_id')))
 
-    def get_new_issue_title(self, **kwargs):
-        return 'Create Redmine Task'
+    def notify(self, notification):
+        event = notification.event
+        group = event.group
+        project = group.project
+        org = group.organization
 
-    def get_initial_form_data(self, request, group, event, **kwargs):
-        return {
-            'description': self._get_group_description(request, group, event),
-            'title': self._get_group_title(request, group, event),
+        if len(group.event_set) > 1 or not self.is_configured(event.project):
+            return
+
+        subject = event.get_email_subject()
+
+        link = group.get_absolute_url()
+
+        html_template = 'sentry/emails/error.html'
+
+        rules = []
+        for rule in notification.rules:
+            rule_link = reverse(
+                'sentry-edit-project-rule',
+                args=[org.slug, project.slug, rule.id]
+            )
+            rules.append((rule.label, rule_link))
+
+        enhanced_privacy = org.flags.enhanced_privacy
+
+        context = {
+            'project_label': project.get_full_name(),
+            'group': group,
+            'event': event,
+            'link': link,
+            'rules': rules,
+            'enhanced_privacy': enhanced_privacy,
         }
 
-    def _get_group_description(self, request, group, event):
-        output = [
-            absolute_uri(group.get_absolute_url()),
-        ]
-        body = self._get_group_body(request, group, event)
-        if body:
-            output.extend([
-                '',
-                '<pre>',
-                body,
-                '</pre>',
-            ])
-        return '\n'.join(output)
+        if not enhanced_privacy:
+            interface_list = []
+            for interface in six.itervalues(event.interfaces):
+                body = interface.to_email_html(event)
+                if not body:
+                    continue
+                text_body = interface.to_string(event)
+                interface_list.append(
+                    (interface.get_title(), mark_safe(body), text_body)
+                )
 
-    def get_client(self, project):
-        return RedmineClient(
-            host=self.get_option('host', project),
-            key=self.get_option('key', project),
-        )
+            context.update({
+                'tags': event.get_tags(),
+                'interfaces': interface_list,
+            })
+
+        form_data = {
+            'title': subject,
+            'description': render_html_body(context, html_template)
+        }
+        self.create_issue(group, form_data)
 
     def create_issue(self, group, form_data, **kwargs):
         """
         Create a Redmine issue
         """
+
         client = self.get_client(group.project)
         default_priority = self.get_option('default_priority', group.project)
         if default_priority is None:
@@ -86,6 +106,11 @@ class RedminePlugin(IssuePlugin):
         response = client.create_issue(issue_dict)
         return response['issue']['id']
 
-    def get_issue_url(self, group, issue_id, **kwargs):
-        host = self.get_option('host', group.project)
-        return '{}/issues/{}'.format(host.rstrip('/'), issue_id)
+    def get_client(self, project):
+        return RedmineClient(
+            host=self.get_option('host', project),
+            key=self.get_option('key', project),
+        )
+
+NotifyConfigurationForm = RedmineOptionsForm
+NotifyPlugin = RedmineAutoTicketPlugin

@@ -35,7 +35,7 @@ setup(
             'redmine = sentry_redmine',
         ],
         'sentry.plugins': [
-            'redmine = sentry_redmine.plugin:RedminePlugin'
+            'redmine = sentry_redmine.plugin:RedmineAutoTicketPlugin'
         ],
     },
     classifiers=[

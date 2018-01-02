@@ -3,75 +3,26 @@ import json
 
 from django import forms
 from django.utils.translation import ugettext_lazy as _
-
+from sentry.plugins.bases import notify
 from .client import RedmineClient
 
 
-class RedmineOptionsForm(forms.Form):
+class RedmineOptionsForm(notify.NotificationConfigurationForm):
     host = forms.URLField(help_text=_("e.g. http://bugs.redmine.org"))
     key = forms.CharField(
         widget=forms.TextInput(attrs={'class': 'span9'}),
         help_text='Your API key is available on your account page after enabling the Rest API (Administration -> Settings -> Authentication)')
-    project_id = forms.TypedChoiceField(
-        label='Project', coerce=int)
-    tracker_id = forms.TypedChoiceField(
-        label='Tracker', coerce=int)
-    default_priority = forms.TypedChoiceField(
-        label='Default Priority', coerce=int)
+    project_id = forms.IntegerField(
+        label='Project')
+    tracker_id = forms.IntegerField(
+        label='Tracker')
+    default_priority = forms.IntegerField(
+        label='Default Priority')
     extra_fields = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 5, 'class': 'span9'}),
         help_text='Extra attributes (custom fields, status id, etc.) in JSON format',
         label='Extra Fields',
         required=False)
-
-    def __init__(self, data=None, *args, **kwargs):
-        super(RedmineOptionsForm, self).__init__(data=data, *args, **kwargs)
-
-        initial = kwargs.get('initial') or {}
-        for key, value in self.data.items():
-            initial[key.lstrip(self.prefix or '')] = value
-
-        has_credentials = all(initial.get(k) for k in ('host', 'key'))
-        if has_credentials:
-            client = RedmineClient(initial['host'], initial['key'])
-            try:
-                projects = client.get_projects()
-            except Exception:
-                has_credentials = False
-            else:
-                project_choices = [
-                    (p['id'], '%s (%s)' % (p['name'], p['identifier']))
-                    for p in projects['projects']
-                ]
-                self.fields['project_id'].choices = project_choices
-
-        if has_credentials:
-            try:
-                trackers = client.get_trackers()
-            except Exception:
-                del self.fields['tracker_id']
-            else:
-                tracker_choices = [
-                    (p['id'], p['name'])
-                    for p in trackers['trackers']
-                ]
-                self.fields['tracker_id'].choices = tracker_choices
-
-            try:
-                priorities = client.get_priorities()
-            except Exception:
-                del self.fields['default_priority']
-            else:
-                tracker_choices = [
-                    (p['id'], p['name'])
-                    for p in priorities['issue_priorities']
-                ]
-                self.fields['default_priority'].choices = tracker_choices
-
-        if not has_credentials:
-            del self.fields['project_id']
-            del self.fields['tracker_id']
-            del self.fields['default_priority']
 
     def clean(self):
         cd = self.cleaned_data
