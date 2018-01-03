@@ -60,8 +60,3 @@ class RedmineOptionsForm(notify.NotificationConfigurationForm):
         if not isinstance(extra_fields_dict, dict):
             raise forms.ValidationError('JSON dictionary must be specified')
         return json.dumps(extra_fields_dict, indent=4)
-
-
-class RedmineNewIssueForm(forms.Form):
-    title = forms.CharField(max_length=200, widget=forms.TextInput(attrs={'class': 'span9'}))
-    description = forms.CharField(widget=forms.Textarea(attrs={'class': 'span9'}))

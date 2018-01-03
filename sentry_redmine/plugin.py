@@ -2,13 +2,14 @@ from __future__ import absolute_import
 import json
 
 import six
+import re
 from django.utils.safestring import mark_safe
 from django.core.urlresolvers import reverse
 
 from sentry.plugins.bases import notify
 
 from .client import RedmineClient
-from .forms import RedmineOptionsForm, RedmineNewIssueForm
+from .forms import RedmineOptionsForm
 from .utils import render_html_body
 
 
@@ -17,6 +18,10 @@ class RedmineAutoTicketPlugin(notify.NotificationPlugin):
     slug = 'redmine_auto_ticket'
     conf_tilte = 'Redmine Auto Ticket'
     conf_key = 'redmine_auto_ticket'
+    description = (
+        'Create Automatically tickets in Redmine when a new issue appears'
+    )
+    author = 'Inkalabs'
     project_conf_form = RedmineOptionsForm
 
     def is_configured(self, project, **kwargs):
